@@ -1,0 +1,969 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>🦌打卡日历</title>
+<style>
+  :root{
+    --bg: #ffffff;
+    --surface: #ffffff;
+    --text: #111827;
+    --muted:#9aa3af;
+    --line: #e5e7eb;
+    --accent:#2f80ff;
+    --radius: 14px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0f1216; --surface:#151a1f; --text:#e5e7eb; --muted:#8b97a6; --line:#2a2f37; --accent:#5aa1ff;
+    }
+  }
+
+  *{ box-sizing:border-box; -webkit-tap-highlight-color: transparent; }
+  html,body{height:100%}
+  /* 去除默认聚焦高亮（按钮/日历/Tab等） */
+  :focus { outline: none; }
+  button:focus, .tab:focus, .day:focus, .navbtn:focus, .pill:focus { outline: none; }
+  button::-moz-focus-inner{ border:0; }
+
+  body{
+    margin:0; color:var(--text); background: var(--bg);
+    font: 16px/1.5 system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial;
+  }
+
+  .app{max-width: 1100px; margin: 0 auto; padding: 16px clamp(14px, 4vw, 28px) 28px}
+
+  /* 顶部栏 */
+  header.appbar{
+    display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px;
+  }
+  .monthbar{ display:flex; align-items:center; gap:10px; }
+  .monthbar .ym{ font-size: clamp(26px, 5vw, 40px); font-weight: 900; letter-spacing:.5px; }
+  .navbtn{
+    border:1px solid var(--line); background: var(--surface);
+    border-radius: 10px; padding: 6px 10px; cursor: pointer; color: var(--text);
+  }
+  .pill{
+    border:1px solid var(--line); background: var(--surface); color: var(--text);
+    border-radius: 999px; padding: 8px 12px; cursor: pointer;
+  }
+
+  .wrap{ display:grid; grid-template-columns: 1.25fr 1fr; gap: clamp(12px, 2.5vw, 20px) }
+  @media (max-width: 980px){ .wrap{ grid-template-columns: 1fr } }
+
+  /* 日历 */
+  .cal{
+    background: var(--surface);
+    border:1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 12px;
+  }
+  .weekheads{
+    display:grid; grid-template-columns: repeat(7,1fr);
+    color: var(--muted); font-weight: 700; font-size: 12px; text-align:center;
+    padding: 8px 6px 6px; border-bottom:1px solid var(--line); margin-bottom:10px;
+  }
+  .grid{ display:grid; grid-template-columns: repeat(7,1fr); gap: 8px; }
+
+  .day{
+    position:relative;
+    background: var(--surface);
+    border:1px solid var(--line);
+    border-radius: 12px;
+    aspect-ratio: 1 / 1;
+    padding: 10px;
+    padding-top: 24px;   /* 顶部日期空间 */
+    padding-bottom: 22px;/* 底部次数空间（纯文字） */
+    display:flex; align-items:flex-start; justify-content:flex-start;
+    cursor:pointer;
+  }
+  .day:hover{ border-color: var(--accent) }
+  .day.muted{ opacity:.5; background: transparent }
+  .day .dnum{
+    position:absolute; left:10px; top:8px; font-weight:800; font-variant-numeric: tabular-nums;
+  }
+
+  /* 次数：纯文字，无背景 */
+  .day .badge{
+    position:absolute; right:10px; bottom:8px;
+    background: transparent; border:0; box-shadow:none;
+    font-weight:800; font-size: 12px; color: var(--muted);
+  }
+
+  /* 今天（未选中）：日期数字为蓝色 */
+  .day.today .dnum{ color: var(--accent); }
+
+  /* 选中样式（非今天）：蓝色 2px 边框 */
+  .day.selected:not(.today){
+    border-color: var(--accent);
+    border-width: 2px;
+  }
+
+  /* 今天且选中：白字 + 蓝底 */
+  .day.selected.today{
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #ffffff;
+  }
+  .day.selected.today .dnum,
+  .day.selected.today .badge{ color:#ffffff }
+
+  /* 侧栏 */
+  .panel{
+    background: var(--surface); border:1px solid var(--line);
+    border-radius: var(--radius); padding: 14px;
+    display:flex; flex-direction:column; gap: 14px;
+  }
+  .seldate{ display:flex; align-items:center; justify-content:space-between }
+  .seldate .mono{ font-variant-numeric: tabular-nums; font-weight:800 }
+
+  .counter{
+    display:flex; align-items:center; justify-content:space-between; gap: 10px;
+    border:1px solid var(--line); border-radius: 12px; padding: 10px;
+  }
+  .count{ min-width: 86px; text-align:center; font-size: 40px; font-weight: 900 }
+
+  .btn{
+    border:1px solid var(--line); border-radius: 12px; padding: 12px 14px; font-weight:800;
+    background: var(--surface); color: var(--text); cursor:pointer;
+    transition: opacity .15s ease;
+  }
+  .btn:hover{ border-color: var(--accent) }
+  .btn.primary{ background: var(--accent); border-color: var(--accent); color: #fff }
+  .btn:disabled{ opacity:.5; cursor:not-allowed; }
+  .row{ display:flex; gap:10px; flex-wrap:wrap }
+  .row .btn{ flex:1 }
+
+  /* 统计框布局（上：本月/连击/上次；中：次数；下：平均；底：总/间隔） */
+  .stats{
+    background: var(--surface); border:1px solid var(--line);
+    border-radius: 12px; padding: 10px; display:flex; flex-direction:column; gap:10px; overflow-x:auto
+  }
+  .stats-top{ display:flex; align-items:stretch; gap:10px; flex-wrap:nowrap; justify-content:space-evenly; text-align:center;}
+  .stats-row{
+    display:grid; grid-template-columns: repeat(4,1fr); gap: 8px;
+  }
+  .stats-split{ border-top: 1px dashed var(--line); padding-top:10px; }
+  .stats-bottom{ border-top: 1px dashed var(--line); padding-top:10px; display:flex; align-items:stretch; gap:10px; flex-wrap:nowrap; justify-content:space-evenly; text-align:center; }
+  .stat{ display:flex; flex-direction:column; gap:2px }
+  .label{ font-size: 12px; color: var(--muted); font-weight:700 }
+  .val{ font-variant-numeric: tabular-nums; font-weight:900; font-size: 18px }
+
+  /* Tabs + 图表 */
+  .charts{ margin-top: 14px; display:grid; gap:12px }
+  .chart-card{
+    background: var(--surface); border:1px solid var(--line);
+    border-radius: 12px; padding: 0;
+  }
+  .tabs .tablist{
+    display:flex; gap:6px; padding: 8px; border-bottom:1px solid var(--line); flex-wrap:wrap;
+  }
+  .tabs .tab{
+    border:1px solid var(--line); background: var(--surface); color: var(--text);
+    border-radius: 999px; padding: 6px 10px; cursor: pointer; font-weight:700;
+  }
+  .tabs .tab[aria-selected="true"]{
+    border-color: var(--accent); color: #fff; background: var(--accent);
+  }
+  .tabpanel{ padding: 10px }
+  canvas{ width:100%; height: 180px; display:block }
+  .tall{ height: 240px }
+
+  /* 移动端微调 */
+  @media (max-width: 480px){
+    .grid{ gap: 6px }
+    .day{ padding: 8px; border-radius: 10px; padding-top: 20px; padding-bottom: 20px }
+    .day .dnum{ left: 8px; top: 6px; font-size: 12px }
+    .day .badge{ right: 6px; bottom: 6px; font-size: 11px }
+  }
+  @media (prefers-reduced-motion: reduce){
+    *{ transition: none !important; animation: none !important }
+  }
+</style>
+</head>
+<body>
+  <div class="app">
+    <header class="appbar">
+      <div class="monthbar">
+        <button class="navbtn" id="prevBtn" aria-label="上个月">◀</button>
+        <div class="ym" id="monthLabel"></div>
+        <button class="navbtn" id="nextBtn" aria-label="下个月">▶</button>
+      </div>
+      <button class="pill" id="todayBtn" aria-label="回到今天">今天</button>
+    </header>
+
+    <div class="wrap">
+      <section class="cal" aria-label="calendar">
+        <div class="weekheads" aria-hidden="true">
+          <div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div>
+        </div>
+        <div class="grid" id="grid" role="grid" aria-label="日历网格"></div>
+      </section>
+
+      <aside class="panel" aria-label="side panel">
+        <div class="seldate">
+          <div>当前日期</div>
+          <div class="mono" id="selDateText"></div>
+        </div>
+
+        <div class="counter" role="group" aria-label="编辑当天次数">
+          <button class="btn" id="minusBtn" aria-label="减一">−</button>
+          <div class="count" id="countText">0</div>
+          <button class="btn" id="plusBtn" aria-label="加一">＋</button>
+        </div>
+
+        <div class="row">
+          <button class="btn primary" id="checkinBtn" aria-label="签到一次">记🦌一次</button>
+         
+        </div>
+
+        <!-- 统计数据框 -->
+        <div class="stats" aria-label="统计">
+          <div class="stats-top">
+            <div class="stat">
+              <div class="label">当月累计</div>
+              <div class="val" id="monthTotal">0</div>
+            </div>
+            <div class="stat">
+              <div class="label">连续🦌天数</div>
+              <div class="val" id="streakVal">0</div>
+            </div>
+            <div class="stat">
+              <div class="label">距离上次记录</div>
+              <div class="val" id="sinceLast">—</div>
+            </div>
+          </div>
+
+          <!-- 上：日周月年 次数 -->
+          <div class="stats-row stats-split">
+            <div class="stat">
+              <div class="label">今日次数</div>
+              <div class="val" id="dayCount">0</div>
+            </div>
+            <div class="stat">
+              <div class="label">本周次数</div>
+              <div class="val" id="weekCount">0</div>
+            </div>
+            <div class="stat">
+              <div class="label">本月次数</div>
+              <div class="val" id="monthCount">0</div>
+            </div>
+            <div class="stat">
+              <div class="label">今年次数</div>
+              <div class="val" id="yearCount">0</div>
+            </div>
+          </div>
+
+          <!-- 下：日周月年 平均（自首日） -->
+          <div class="stats-row">
+            <div class="stat">
+              <div class="label">日平均</div>
+              <div class="val" id="dayAvg">0</div>
+            </div>
+            <div class="stat">
+              <div class="label">周平均</div>
+              <div class="val" id="weekAvg">0</div>
+            </div>
+            <div class="stat">
+              <div class="label">月平均</div>
+              <div class="val" id="monthAvg2">0</div>
+            </div>
+            <div class="stat">
+              <div class="label">年平均</div>
+              <div class="val" id="yearAvg">0</div>
+            </div>
+          </div>
+
+          <div class="stats-bottom">
+            <div class="stat">
+              <div class="label">总次数</div>
+              <div class="val" id="totalCount">0</div>
+            </div>
+            <div class="stat">
+              <div class="label">平均间隔</div>
+              <div class="val" id="avgGap">—</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 导入导出同一行 -->
+        <div class="row">
+          <button class="btn" id="importBtn" aria-label="导入数据（JSON）">导入数据</button>
+          <button class="btn" id="exportBtn" aria-label="导出数据">导出数据</button>
+        </div>
+        <input type="file" id="importFile" accept="application/json" hidden />
+      </aside>
+    </div>
+
+    <!-- 图表：Tabs -->
+    <section class="charts">
+      <!-- 次数折线图 Tabs：日 / 周 / 月 / 年 -->
+      <div class="chart-card tabs" id="countTabs">
+        <div class="tablist" role="tablist" aria-label="次数曲线">
+          <button class="tab" role="tab" aria-selected="true" data-kind="day">日</button>
+          <button class="tab" role="tab" aria-selected="false" data-kind="week">周</button>
+          <button class="tab" role="tab" aria-selected="false" data-kind="month">月</button>
+          <button class="tab" role="tab" aria-selected="false" data-kind="year">年</button>
+        </div>
+        <div class="tabpanel" role="tabpanel">
+          <canvas id="countsCanvas"></canvas>
+        </div>
+      </div>
+
+      <!-- 每日签到时间点 Tabs（周从周日开始） -->
+      <div class="chart-card tabs" id="timeTabs">
+        <div class="tablist" role="tablist" aria-label="签到时间">
+          <button class="tab" role="tab" aria-selected="true" data-kind="week">本周</button>
+          <button class="tab" role="tab" aria-selected="false" data-kind="month">本月</button>
+        </div>
+        <div class="tabpanel" role="tabpanel">
+          <canvas id="dotsCanvas" class="tall"></canvas>
+        </div>
+      </div>
+    </section>
+  </div>
+
+<script>
+(function(){
+  const STORAGE_KEY = 'workout-log-v2'; // { "YYYY-MM-DD": [ISO time strings] }
+
+  const $ = sel => document.querySelector(sel);
+  const grid = $('#grid');
+  const monthLabel = $('#monthLabel');
+  const selDateText = $('#selDateText');
+  const countText = $('#countText');
+
+  const monthTotalEl = $('#monthTotal');
+  const streakEl = $('#streakVal');
+  const sinceLastEl = $('#sinceLast');
+
+  const dayCountEl = $('#dayCount');
+  const dayAvgEl = $('#dayAvg');
+  const weekCountEl = $('#weekCount');
+  const weekAvgEl = $('#weekAvg');
+  const monthCountEl = $('#monthCount');
+  const monthAvg2El = $('#monthAvg2');
+  const yearCountEl = $('#yearCount');
+  const yearAvgEl = $('#yearAvg');
+  const totalCountEl = $('#totalCount');
+  const avgGapEl = $('#avgGap');
+
+  const prevBtn = $('#prevBtn');
+  const nextBtn = $('#nextBtn');
+  const todayBtn = $('#todayBtn');
+  const plusBtn = $('#plusBtn');
+  const minusBtn = $('#minusBtn');
+  const checkinBtn = $('#checkinBtn');
+  const exportBtn = $('#exportBtn');
+  const importBtn = $('#importBtn');
+  const importFile = $('#importFile');
+
+  // tabs + canvas
+  const countTabs = $('#countTabs');
+  const timeTabs  = $('#timeTabs');
+  const countsCanvas = $('#countsCanvas');
+  const dotsCanvas   = $('#dotsCanvas');
+
+  // ---------- State ----------
+  let data = loadData(); // { "YYYY-MM-DD": [iso,...] }
+  let view = today(); // {y,m,d}
+  let selected = today();
+
+  // 立即写入当前日期与月份标题（修复初始 0000-00-00）
+  selDateText.textContent = keyOf(selected);
+  monthLabel.textContent = ymLabel(view);
+
+  // series cache for counts tabs
+  let seriesCache = null; // {day,week,month,year, earliest, all}
+
+  // ---------- Helpers (date/format) ----------
+  function pad(n){ return String(n).padStart(2,'0'); }
+  function keyOf(obj){ return `${obj.y}-${pad(obj.m+1)}-${pad(obj.d)}`; }
+  function today(){ const t = new Date(); return { y:t.getFullYear(), m:t.getMonth(), d:t.getDate() }; }
+  function ymLabel(obj){ return `${obj.y}/${obj.m+1}`; } // 2025/9
+  function monthDays(y,m){ return new Date(y, m+1, 0).getDate(); }
+  function firstWeekdaySun0(y,m){ return new Date(y,m,1).getDay(); } // 0=Sun
+
+  function startOfDay(d){ return new Date(d.getFullYear(), d.getMonth(), d.getDate()); }
+  function addDays(d, n){ const x=new Date(d); x.setDate(x.getDate()+n); return x; }
+  function startOfWeekSun(d){ // 周日为一周开始
+    const s = startOfDay(d);
+    const diff = s.getDay(); // 0..6（0=Sun）
+    return addDays(s, -diff);
+  }
+  function startOfWeekMon(d){
+    const s = startOfDay(d);
+    const w = s.getDay();
+    const diff = (w+6)%7;
+    return addDays(s, -diff);
+  }
+  function startOfMonth(d){ return new Date(d.getFullYear(), d.getMonth(), 1); }
+  function addMonths(d, n){ return new Date(d.getFullYear(), d.getMonth()+n, 1); }
+  function startOfYear(d){ return new Date(d.getFullYear(), 0, 1); }
+  function addYears(d, n){ return new Date(d.getFullYear()+n, 0, 1); }
+
+  function fmt(n){
+    if(n===undefined || n===null || isNaN(n)) return '—';
+    if(Math.abs(n - Math.round(n)) < 1e-9) return String(Math.round(n));
+    return (Math.round(n*100)/100).toString();
+  }
+  function humanize(ms){
+    if(!isFinite(ms) || ms<=0) return '—';
+    if(ms < 60*1000) return '刚刚';
+    const d = Math.floor(ms/86400000);
+    const h = Math.floor((ms%86400000)/3600000);
+    const m = Math.floor((ms%3600000)/60000);
+    const parts = [];
+    if(d>0) parts.push(`${d}天`);
+    if(h>0) parts.push(`${h}小时`);
+    if(m>0) parts.push(`${m}分`);
+    return parts.length? parts.slice(0,2).join('') : '不到1分';
+  }
+
+  // ---------- Storage helpers ----------
+  function loadData(){
+    try{
+      return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+    }catch(e){ console.warn('Bad localStorage JSON, reset to {}'); return {}; }
+  }
+  function saveData(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+  
+  function getList(obj){
+    const k = keyOf(obj);
+    const v = data[k];
+    return Array.isArray(v) ? v.slice() : [];
+  }
+  function setList(obj, arr){
+    const k = keyOf(obj);
+    if(!arr || arr.length===0) delete data[k];
+    else data[k] = arr;
+    saveData();
+  }
+  function addEntry(obj){
+    // 仅允许今天
+    const t = today();
+    if(!(obj.y===t.y && obj.m===t.m && obj.d===t.d)) return;
+    const arr = getList(obj);
+    arr.push(new Date().toISOString());
+    setList(obj, arr);
+  }
+  function removeEntry(obj){
+    // 仅允许今天撤销
+    const t = today();
+    if(!(obj.y===t.y && obj.m===t.m && obj.d===t.d)) return;
+    const arr = getList(obj);
+    if(arr.length>0){ arr.pop(); setList(obj, arr); }
+  }
+  function getCount(obj){ return getList(obj).length; }
+
+  function getAllTimestampsMs(){
+    const all = [];
+    for(const k in data){
+      const arr = data[k];
+      if(Array.isArray(arr)){
+        for(const t of arr){ const ms = new Date(t).getTime(); if(isFinite(ms)) all.push(ms); }
+      }
+    }
+    return all.sort((a,b)=>a-b);
+  }
+
+  // ---------- Aggregation helpers ----------
+  function countBetween(all, start, end){
+    const s = start.getTime(), e = end.getTime();
+    let c = 0;
+    for(const x of all){ if(x>=s && x<e) c++; else if(x>=e) break; }
+    return c;
+  }
+  function seriesDailyFrom(firstDay, lastDay, all){
+    const values=[], labels=[];
+    let cur = new Date(firstDay);
+    const end = addDays(startOfDay(lastDay), 1);
+    while(cur < end){
+      const next = addDays(cur,1);
+      values.push(countBetween(all, cur, next));
+      labels.push(`${cur.getMonth()+1}/${cur.getDate()}`);
+      cur = next;
+    }
+    return {values, labels};
+  }
+  function seriesWeeklyFrom(firstDay, lastDay, all){
+    const start = startOfWeekMon(firstDay);
+    const end = addDays(startOfWeekMon(lastDay), 7);
+    const values=[], labels=[];
+    let cur = start;
+    while(cur < end){
+      const next = addDays(cur,7);
+      values.push(countBetween(all, cur, next));
+      labels.push(`${cur.getMonth()+1}/${cur.getDate()}`);
+      cur = next;
+    }
+    return {values, labels};
+  }
+  function seriesMonthlyFrom(firstDay, lastDay, all){
+    const start = startOfMonth(firstDay);
+    const end = addMonths(lastDay,1);
+    const values=[], labels=[];
+    let cur = start;
+    while(cur < end){
+      const next = addMonths(cur,1);
+      values.push(countBetween(all, cur, next));
+      labels.push(`${cur.getFullYear()}/${cur.getMonth()+1}`);
+      cur = next;
+    }
+    return {values, labels};
+  }
+  function seriesYearlyFrom(firstDay, lastDay, all){
+    const start = startOfYear(firstDay);
+    const end = addYears(lastDay,1);
+    const values=[], labels=[];
+    let cur = start;
+    while(cur < end){
+      const next = addYears(cur,1);
+      values.push(countBetween(all, cur, next));
+      labels.push(`${cur.getFullYear()}`);
+      cur = next;
+    }
+    return {values, labels};
+  }
+
+  // ---------- Charts: helpers ----------
+  function prepCanvas(canvas, heightPx){
+    const ratio = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth || 300;
+    const h = heightPx;
+    canvas.width = Math.max(1, Math.floor(w*ratio));
+    canvas.height = Math.max(1, Math.floor(h*ratio));
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.scale(ratio, ratio);
+    ctx.clearRect(0,0,w,h);
+    return {ctx, w, h};
+  }
+  function drawLineChart(canvas, values){
+    const {ctx,w,h} = prepCanvas(canvas, 180);
+    const padding = {l: 34, r: 10, t: 10, b: 24};
+    const plotW = Math.max(1, w - padding.l - padding.r);
+    const plotH = Math.max(1, h - padding.t - padding.b);
+
+    // grid
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--line');
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for(let i=0;i<=4;i++){
+      const y = padding.t + plotH * (i/4);
+      ctx.moveTo(padding.l, y);
+      ctx.lineTo(padding.l + plotW, y);
+    }
+    ctx.stroke();
+
+    // y labels
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--muted');
+    ctx.font = '12px system-ui, -apple-system, Segoe UI, Roboto, Arial';
+
+    const maxV = Math.max(1, Math.max(...values, 0));
+    const niceMax = Math.pow(10, Math.floor(Math.log10(maxV)));
+    const yMax = Math.ceil(maxV / niceMax) * niceMax;
+
+    for(let i=0;i<=4;i++){
+      const val = yMax * (1 - i/4);
+      const y = padding.t + plotH * (i/4);
+      ctx.fillText(String(Math.round(val)), 4, y+4);
+    }
+
+    // x axis baseline
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--line');
+    ctx.beginPath();
+    ctx.moveTo(padding.l, padding.t + plotH);
+    ctx.lineTo(padding.l + plotW, padding.t + plotH);
+    ctx.stroke();
+
+    if(values.length===0) {
+      ctx.fillStyle = '#bbb';
+      ctx.fillText('暂无数据', Math.max(10,w/2-30), Math.max(10,h/2));
+      return;
+    }
+
+    // line
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    for(let i=0;i<values.length;i++){
+      const x = padding.l + plotW * (i/(Math.max(1,values.length-1)));
+      const y = padding.t + plotH * (1 - values[i]/yMax);
+      if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+
+    // x tick labels（首/中/末）
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--muted');
+    ctx.textAlign = 'center';
+    const tickIdx = values.length>1 ? [0, Math.floor(values.length/2), values.length-1] : [0];
+    tickIdx.forEach(idx=>{
+      const x = padding.l + plotW * (idx/(values.length-1 || 1));
+      ctx.fillText(String(idx+1), x, h-6);
+    });
+  }
+
+  function drawTimeDots(canvas, columns, getTimesForColumn, labels){
+    const {ctx,w,h} = prepCanvas(canvas, 240);
+    const padding = {l: 28, r: 10, t: 10, b: 22};
+    const plotW = Math.max(1, w - padding.l - padding.r);
+    const plotH = Math.max(1, h - padding.t - padding.b);
+    const colW = plotW / columns;
+
+    // 背景竖线
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--line');
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for(let i=0;i<=columns;i++){
+      const x = padding.l + i*colW;
+      ctx.moveTo(x, padding.t);
+      ctx.lineTo(x, padding.t + plotH);
+    }
+    // 横线（0/6/12/18/24）
+    for(let i=0;i<=4;i++){
+      const y = padding.t + plotH * (i/4);
+      ctx.moveTo(padding.l, y);
+      ctx.lineTo(padding.l + plotW, y);
+    }
+    ctx.stroke();
+
+    // y轴标注
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--muted');
+    ctx.font = '12px system-ui, -apple-system, Segoe UI, Roboto, Arial';
+    ['0','6','12','18','24'].forEach((t,i)=>{
+      const y = padding.t + plotH * (i/4);
+      ctx.textAlign = 'left';
+      ctx.fillText(t, 4, y+4);
+    });
+
+    // 点
+    const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+    ctx.fillStyle = accent;
+    for(let i=0;i<columns;i++){
+      const times = getTimesForColumn(i); // Date[]
+      if(!times || !times.length) continue;
+      const cx = padding.l + (i + 0.5)*colW;
+      for(const d of times){
+        const minutes = d.getHours()*60 + d.getMinutes() + d.getSeconds()/60;
+        const ratio = minutes / (24*60);
+        const y = padding.t + plotH * ratio; // 0h在上，24h在下
+        ctx.beginPath();
+        ctx.arc(cx, y, 3, 0, Math.PI*2);
+        ctx.fill();
+      }
+    }
+
+    // x轴标注（与每日列居中对齐）
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--muted');
+    ctx.textAlign = 'center';
+    const step = Math.max(1, Math.ceil(14 / colW)); // 控制密度
+    for(let i=0;i<columns;i+=step){
+      const x = padding.l + (i + 0.5)*colW;
+      ctx.fillText(labels[i], x, h-6);
+    }
+  }
+
+  // ---------- Tabs ----------
+  function initTabs(tabsEl, onChange){
+    const btns = tabsEl.querySelectorAll('.tablist .tab');
+    function activate(btn){
+      btns.forEach(b=> b.setAttribute('aria-selected', String(b===btn)));
+      onChange(btn.dataset.kind);
+    }
+    btns.forEach(b=> b.addEventListener('click', ()=> activate(b)));
+    const initBtn = Array.from(btns).find(b=>b.getAttribute('aria-selected')==='true') || btns[0];
+    activate(initBtn);
+    return { getActiveKey: ()=> (Array.from(btns).find(b=> b.getAttribute('aria-selected')==='true').dataset.kind), redraw: ()=> onChange(Array.from(btns).find(b=> b.getAttribute('aria-selected')==='true').dataset.kind) };
+  }
+
+  // ---------- Stats & Charts ----------
+  function getAllTimestampsMs(){
+    const all = [];
+    for(const k in data){
+      const arr = data[k];
+      if(Array.isArray(arr)){
+        for(const t of arr){ const ms = new Date(t).getTime(); if(isFinite(ms)) all.push(ms); }
+      }
+    }
+    return all.sort((a,b)=>a-b);
+  }
+  function computeAndRenderStatsAndCharts(){
+    const all = getAllTimestampsMs();
+    const now = new Date();
+
+    const firstMs = all[0];
+    const earliest = isFinite(firstMs) ? startOfDay(new Date(firstMs)) : null;
+    const last = isFinite(all[all.length-1]) ? new Date(all[all.length-1]) : null;
+
+    sinceLastEl.textContent = last ? humanize(Date.now() - last.getTime()) : '—';
+
+    const startT = startOfDay(now), endT = addDays(startT,1);
+    dayCountEl.textContent = fmt(countBetween(all, startT, endT));
+
+    const startW = startOfWeekMon(now), endW = addDays(startW,7);
+    weekCountEl.textContent = fmt(countBetween(all, startW, endW));
+
+    const startM = startOfMonth(now), endM = addMonths(now,1);
+    monthCountEl.textContent = fmt(countBetween(all, startM, endM));
+
+    const startY = startOfYear(now), endY = addYears(now,1);
+    yearCountEl.textContent = fmt(countBetween(all, startY, endY));
+
+    if(earliest){
+      const daily   = seriesDailyFrom(earliest, now, all);
+      const weekly  = seriesWeeklyFrom(earliest, now, all);
+      const monthly = seriesMonthlyFrom(earliest, now, all);
+      const yearly  = seriesYearlyFrom(earliest, now, all);
+
+      const totalAll = daily.values.reduce((a,b)=>a+b,0);
+      totalCountEl.textContent = fmt(totalAll);
+
+      dayAvgEl.textContent   = fmt(totalAll / daily.values.length);
+      weekAvgEl.textContent  = fmt(weekly.values.reduce((a,b)=>a+b,0) / weekly.values.length || 0);
+      monthAvg2El.textContent= fmt(monthly.values.reduce((a,b)=>a+b,0) / monthly.values.length || 0);
+      yearAvgEl.textContent  = fmt(yearly.values.reduce((a,b)=>a+b,0) / yearly.values.length || 0);
+
+      if(all.length >= 2){
+        let sum = 0;
+        for(let i=1;i<all.length;i++) sum += (all[i]-all[i-1]);
+        avgGapEl.textContent = humanize(sum/(all.length-1));
+      }else{
+        avgGapEl.textContent = '—';
+      }
+
+      // 缓存给折线图 tabs 使用
+      seriesCache = { day: daily, week: weekly, month: monthly, year: yearly, earliest, all };
+    }else{
+      dayAvgEl.textContent = weekAvgEl.textContent = monthAvg2El.textContent = yearAvgEl.textContent = '—';
+      totalCountEl.textContent = '0'; avgGapEl.textContent = '—';
+      seriesCache = { day:{values:[]}, week:{values:[]}, month:{values:[]}, year:{values:[]}, earliest:null, all:[] };
+    }
+
+    // 重绘 Tabs 当前激活的图
+    countsTabsCtl.redraw();
+    timeTabsCtl.redraw();
+  }
+
+  function redrawCounts(kind){
+    const values = (seriesCache && seriesCache[kind]) ? seriesCache[kind].values : [];
+    drawLineChart(countsCanvas, values || []);
+  }
+
+  function redrawTime(kind){
+    if(kind==='week'){
+      // 周日开始的本周
+      const base = startOfWeekSun(new Date());
+      const labels = ['日','一','二','三','四','五','六'];
+      drawTimeDots(dotsCanvas, 7, (i)=>{
+        const d = addDays(base, i);
+        const obj = {y:d.getFullYear(), m:d.getMonth(), d:d.getDate()};
+        return getList(obj).map(t=> new Date(t));
+      }, labels);
+    }else{
+      // month（当前视图）
+      const y=view.y, m=view.m;
+      const days = monthDays(y,m);
+      const labels = Array.from({length:days}, (_,i)=> String(i+1));
+      drawTimeDots(dotsCanvas, days, (i)=>{
+        const obj = {y, m, d:i+1};
+        return getList(obj).map(t=> new Date(t));
+      }, labels);
+    }
+  }
+
+  // ---------- Rendering ----------
+  function renderAll(){
+    renderMonth();
+    updateSidePanel();
+    computeAndRenderStatsAndCharts();
+  }
+  function renderMonth(){
+    monthLabel.textContent = ymLabel(view);
+    grid.innerHTML = '';
+
+    const blanks = firstWeekdaySun0(view.y, view.m);
+    for(let i=0;i<blanks;i++){
+      const ghost = document.createElement('div');
+      ghost.className = 'day muted';
+      ghost.setAttribute('aria-hidden','true');
+      grid.appendChild(ghost);
+    }
+
+    const days = monthDays(view.y, view.m);
+    for(let d=1; d<=days; d++){
+      const cell = document.createElement('button');
+      cell.className = 'day';
+      cell.setAttribute('role','gridcell');
+      cell.setAttribute('aria-label', `日期 ${view.y}-${pad(view.m+1)}-${pad(d)}`);
+
+      const dd = {y:view.y, m:view.m, d};
+      const t = today();
+      const isTd = (dd.y===t.y && dd.m===t.m && dd.d===t.d);
+      if(isTd) cell.classList.add('today');
+      if(dd.y===selected.y && dd.m===selected.m && dd.d===selected.d) cell.classList.add('selected');
+
+      const n = getCount(dd);
+
+      const num = document.createElement('div');
+      num.className = 'dnum';
+      num.textContent = d;
+      cell.appendChild(num);
+
+      if(n>0){
+        const badge = document.createElement('div');
+        badge.className = 'badge';
+        badge.textContent = n; // 纯文字
+        cell.appendChild(badge);
+      }
+
+      cell.addEventListener('click', ()=>{
+        selected = dd;
+        renderMonth();
+        updateSidePanel();
+        // 月时间点图依赖 view
+        timeTabsCtl.redraw();
+      });
+
+      grid.appendChild(cell);
+    }
+    monthTotalEl.textContent = calcMonthTotal(view.y, view.m);
+  }
+
+  function calcMonthTotal(y,m){
+    let sum = 0;
+    const days = monthDays(y,m);
+    for(let d=1; d<=days; d++) sum += getCount({y,m,d});
+    return sum;
+  }
+  function calcStreakUntilToday(){
+    let streak = 0;
+    let cur = today();
+    while(true){
+      const n = getCount(cur);
+      if(n>0){ streak++; } else break;
+      const dt = new Date(cur.y, cur.m, cur.d);
+      dt.setDate(dt.getDate()-1);
+      cur = { y: dt.getFullYear(), m: dt.getMonth(), d: dt.getDate() };
+      if(dt.getFullYear() < 2000) break;
+    }
+    return streak;
+  }
+
+  function updateSidePanel(){
+    selDateText.textContent = keyOf(selected);
+    countText.textContent = getCount(selected)+'次';
+
+    // 仅今天可编辑：按钮禁用
+    const t = today();
+    const isTodaySelected = (selected.y===t.y && selected.m===t.m && selected.d===t.d);
+    [plusBtn, minusBtn, checkinBtn].forEach(btn=>{
+      btn.disabled = !isTodaySelected;
+      btn.title = isTodaySelected ? '' : '只能在今天进行签到/撤销/重置';
+    });
+
+    // 连续天数
+    streakEl.textContent = calcStreakUntilToday();
+  }
+
+  // ---------- Actions ----------
+  function incSelected(n=1){
+    const t = today();
+    const isTodaySelected = (selected.y===t.y && selected.m===t.m && selected.d===t.d);
+    if(!isTodaySelected) return; // 二次防护
+    if(n>0){ addEntry(selected); }
+    else if(n<0){ removeEntry(selected); }
+    renderMonth();
+    updateSidePanel();
+    computeAndRenderStatsAndCharts();
+  }
+
+  // ---------- Tabs init ----------
+  const countsTabsCtl = initTabs(countTabs, redrawCounts);
+  const timeTabsCtl   = initTabs(timeTabs,   redrawTime);
+
+  // ---------- Events ----------
+  prevBtn.addEventListener('click', ()=>{
+    const d = new Date(view.y, view.m, 1);
+    d.setMonth(d.getMonth()-1);
+    view = { y:d.getFullYear(), m:d.getMonth(), d:1 };
+    renderAll();
+  });
+  nextBtn.addEventListener('click', ()=>{
+    const d = new Date(view.y, view.m, 1);
+    d.setMonth(d.getMonth()+1);
+    view = { y:d.getFullYear(), m:d.getMonth(), d:1 };
+    renderAll();
+  });
+  todayBtn.addEventListener('click', ()=>{
+    view = today();
+    selected = today();
+    renderAll();
+  });
+
+  plusBtn.addEventListener('click', ()=> incSelected(+1));
+  minusBtn.addEventListener('click', () => {
+    if (confirm("确定撤销记录吗？会丢失上次记录的时间信息")) {
+      incSelected(-1);
+    }
+  });
+checkinBtn.addEventListener('click', ()=> incSelected(+1));
+  
+
+  // 导出/导入
+  exportBtn.addEventListener('click', ()=>{
+    const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `workout-log-${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  });
+  importBtn.addEventListener('click', ()=> importFile.click());
+  importFile.addEventListener('change', async (e)=>{
+    const file = e.target.files?.[0];
+    if(!file) return;
+    try{
+      const text = await file.text();
+      const obj = JSON.parse(text);
+      if(Object.prototype.toString.call(obj) !== '[object Object]') throw new Error('Invalid JSON');
+      data = obj;
+      saveData(); renderAll();
+      alert('导入完成');
+    }catch(err){
+      alert('导入失败：' + err.message);
+    }finally{
+      importFile.value = '';
+    }
+  });
+
+  // 重绘（响应尺寸变化）
+  window.addEventListener('resize', ()=>{
+    countsTabsCtl.redraw();
+    timeTabsCtl.redraw();
+  }, {passive:true});
+
+  // 移动端左右滑动切月
+  (function attachSwipe(el){
+    let startX=0, startY=0, t0=0;
+    el.addEventListener('touchstart', (e)=>{
+      const t = e.touches[0];
+      startX = t.clientX; startY = t.clientY; t0= Date.now();
+    }, {passive:true});
+    el.addEventListener('touchend', (e)=>{
+      const t = e.changedTouches[0];
+      const dx = t.clientX - startX, dy = t.clientY - startY;
+      const dt = Date.now() - t0;
+      if(Math.abs(dx) > 60 && Math.abs(dy) < 40 && dt < 800){
+        if(dx < 0) nextBtn.click(); else prevBtn.click();
+      }
+    });
+  })(grid);
+
+  // 初始渲染
+  renderAll();
+  setInterval(renderAll,5000);
+})();
+</script>
+</body>
+</html>
