@@ -1,0 +1,17 @@
+{
+  "name": "deer-diary",
+  "version": "1.0.0",
+  "description": "鹿日记 - 每日签到打卡应用",
+  "private": true,
+  "scripts": {
+    "prepare:www": "mkdir -p www && cp index.html www/",
+    "cap:add": "npx cap add android",
+    "cap:sync": "npx cap sync android",
+    "cap:open": "npx cap open android"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.2.0",
+    "@capacitor/core": "^6.2.0",
+    "@capacitor/android": "^6.2.0"
+  }
+}

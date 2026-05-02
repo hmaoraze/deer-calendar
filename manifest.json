@@ -1,0 +1,22 @@
+{
+  "name": "鹿日记",
+  "short_name": "鹿日记",
+  "description": "鹿日记 - 每日签到打卡应用",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2f80ff",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
